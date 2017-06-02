@@ -1,3 +1,5 @@
+library(missForest)
+library(FactoMineR)
 library(tidyverse)
 library(stringr)
 library(lubridate)
@@ -323,7 +325,7 @@ data <- data %>% select(-VictimCount)
 colnames(data)[map(data, ~class(.) == 'integer') %>% unlist()]
 
 # Is there any linear relationship between the ages of the Victim and the Perpetrator?
-# It doesn't seem like it
+# It doesn't seem like it for most of the ages
 data %>% 
   sample_frac(.1) %>% 
   ggplot(aes(VictimAge, PerpetratorAge)) +
@@ -334,11 +336,86 @@ data %>%
   colMeans(na.rm=TRUE)
 
 # Only Relationship has a significant amount of Unknowns, 
+select(data, Relationship) %>% table()
 # but it might actually be a different modality for this category.
-# Thus, we'll leave all Unknowns as they are
+
+relationship_unknown_catdes <- data %>% 
+  mutate(
+    Relationship = ifelse(Relationship != 'Unknown', 'Known', 'Unknown') %>% factor,
+    Year = factor(Year)
+  ) %>% 
+  select(-Date) %>% 
+  as.data.frame() %>% 
+  catdes(num.var=13, proba=0.05)
+
+# If we look at the test.chi2 table, we see that all variables characterize
+# the Known/Unkwown factor for Relationship. 
+# We then know that these are MAR (Missings at Random),
+# which means that they are affected by third variables.
+# We decide to leave the Unknowns as a new modality, 
+# since they contain information related to the rest of the variables.
+relationship_unknown_catdes$test.chi2
+
+# For Sex (Victim or Perpetrator), since it's a dichotomy, 
+# it doesn't make sense to create a separate modality.
+# We'll try to impute their values.
+
+# We will use Random Forest imputation, because most of our variables are categorical
+# and RFs should capture the imputation rules appropriately.
+# imputed_data <- data %>% 
+#   select(-Date) %>% 
+#   mutate(
+#     VictimSex=ifelse(VictimSex == 'Unknown', NA, VictimSex),
+#     PerpetratorSex=ifelse(PerpetratorSex == 'Unknown', NA, PerpetratorSex)
+#   ) %>% 
+#   as.matrix()# %>% 
+# 
+# imputed_data %>% is.na %>% colMeans
+# imputed_data <- missForest(imputed_data, verbose=TRUE)
+# summary(imputed_data)
+
+# Let's analyze Race and Weapon in comparison with the rest of variables.
+victimrace_unknown_catdes <- data %>% 
+  mutate(
+    VictimRace = ifelse(VictimRace != 'Unknown', 'Known', 'Unknown') %>% factor,
+    Year = factor(Year)
+  ) %>% 
+  select(-Date) %>% 
+  as.data.frame() %>% 
+  catdes(num.var=9, proba=0.05)
+
+victimrace_unknown_catdes$test.chi2
+# There's relationship between VictimRace=Unknown and the rest of the variables
+
+perpetratorrace_unknown_catdes <- data %>% 
+  mutate(
+    PerpetratorRace = ifelse(PerpetratorRace != 'Unknown', 'Known', 'Unknown') %>% factor,
+    Year = factor(Year)
+  ) %>% 
+  select(-Date) %>% 
+  as.data.frame() %>% 
+  catdes(num.var=12, proba=0.05)
+
+perpetratorrace_unknown_catdes$test.chi2
+# There's relationship between PerpetratorRace=Unknown and the rest of the variables
+
+weapon_unknown_catdes <- data %>% 
+  mutate(
+    Weapon = ifelse(Weapon != 'Unknown', 'Known', 'Unknown') %>% factor,
+    Year = factor(Year)
+  ) %>% 
+  select(-Date) %>% 
+  as.data.frame() %>% 
+  catdes(num.var=14, proba=0.05)
+
+weapon_unknown_catdes$test.chi2
+# There's relationship between Weapon=Unknown and the rest of the variables
+
+# So, we'll leave Unknown as a separate modality
+
 
 # Now, for the NAs in age. How many are they?
-select(data, VictimAge, PerpetratorAge) %>% is.na %>% colSums
+(select(data, VictimAge, PerpetratorAge) %>% is.na %>% colSums) / nrow(data)
 # Very low percentage. We could impute their values
 # TODO: Imputations
 
