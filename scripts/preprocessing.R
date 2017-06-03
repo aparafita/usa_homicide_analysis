@@ -1,4 +1,7 @@
-library(missForest)
+library(doParallel)
+registerDoParallel(cores=3)
+
+library(randomForest)
 library(FactoMineR)
 library(tidyverse)
 library(stringr)
@@ -339,22 +342,62 @@ data %>%
 select(data, Relationship) %>% table()
 # but it might actually be a different modality for this category.
 
-relationship_unknown_catdes <- data %>% 
+data %>% 
   mutate(
     Relationship = ifelse(Relationship != 'Unknown', 'Known', 'Unknown') %>% factor,
     Year = factor(Year)
-  ) %>% 
-  select(-Date) %>% 
-  as.data.frame() %>% 
-  catdes(num.var=13, proba=0.05)
+  ) %>%
+  select(-Date) %>%
+  as.data.frame() %>%
+  catdes(num.var=13, proba=0.05) %>% 
+  '$'('test.chi2')
 
 # If we look at the test.chi2 table, we see that all variables characterize
-# the Known/Unkwown factor for Relationship. 
+# the Known/Unkwown factor for Relationship.
 # We then know that these are MAR (Missings at Random),
 # which means that they are affected by third variables.
-# We decide to leave the Unknowns as a new modality, 
+# We decide to leave the Unknowns as a new modality,
 # since they contain information related to the rest of the variables.
-relationship_unknown_catdes$test.chi2
+
+# Let's analyze Race and Weapon in comparison with the rest of variables.
+data %>%
+  mutate(
+    VictimRace = ifelse(VictimRace != 'Unknown', 'Known', 'Unknown') %>% factor,
+    Year = factor(Year)
+  ) %>%
+  select(-Date) %>%
+  as.data.frame() %>%
+  catdes(num.var=9, proba=0.05) %>% 
+  '$'('test.chi2')
+
+# There's relationship between VictimRace=Unknown and the rest of the variables
+
+data %>%
+  mutate(
+    PerpetratorRace = ifelse(PerpetratorRace != 'Unknown', 'Known', 'Unknown') %>% factor,
+    Year = factor(Year)
+  ) %>%
+  select(-Date) %>%
+  as.data.frame() %>%
+  catdes(num.var=12, proba=0.05) %>% 
+  '$'('test.chi2')
+
+# There's relationship between PerpetratorRace=Unknown and the rest of the variables
+
+data %>%
+  mutate(
+    Weapon = ifelse(Weapon != 'Unknown', 'Known', 'Unknown') %>% factor,
+    Year = factor(Year)
+  ) %>%
+  select(-Date) %>%
+  as.data.frame() %>%
+  catdes(num.var=14, proba=0.05) %>% 
+  '$'('test.chi2')
+
+# There's relationship between Weapon=Unknown and the rest of the variables
+
+# So, we'll leave Unknown as a separate modality in these variables
+
 
 # For Sex (Victim or Perpetrator), since it's a dichotomy, 
 # it doesn't make sense to create a separate modality.
@@ -362,66 +405,122 @@ relationship_unknown_catdes$test.chi2
 
 # We will use Random Forest imputation, because most of our variables are categorical
 # and RFs should capture the imputation rules appropriately.
-# imputed_data <- data %>% 
-#   select(-Date) %>% 
-#   mutate(
-#     VictimSex=ifelse(VictimSex == 'Unknown', NA, VictimSex),
-#     PerpetratorSex=ifelse(PerpetratorSex == 'Unknown', NA, PerpetratorSex)
-#   ) %>% 
-#   as.matrix()# %>% 
-# 
-# imputed_data %>% is.na %>% colMeans
-# imputed_data <- missForest(imputed_data, verbose=TRUE)
-# summary(imputed_data)
-
-# Let's analyze Race and Weapon in comparison with the rest of variables.
-victimrace_unknown_catdes <- data %>% 
+imputed_data <- data %>%
+  select(-Date, -City) %>% # we can't consider as many modalities as City provides, so we need to exclude it
   mutate(
-    VictimRace = ifelse(VictimRace != 'Unknown', 'Known', 'Unknown') %>% factor,
-    Year = factor(Year)
-  ) %>% 
-  select(-Date) %>% 
-  as.data.frame() %>% 
-  catdes(num.var=9, proba=0.05)
+    VictimSex=levels(VictimSex)[
+      ifelse(VictimSex == 'Unknown', NA, VictimSex)
+      ] %>% factor,
+    PerpetratorSex=levels(PerpetratorSex)[
+      ifelse(PerpetratorSex == 'Unknown', NA, PerpetratorSex)
+      ] %>% factor,
+    Year=factor(Year)
+  )
 
-victimrace_unknown_catdes$test.chi2
-# There's relationship between VictimRace=Unknown and the rest of the variables
+imputation_columns <- colnames(imputed_data)[imputed_data %>% is.na %>% colSums %>% '>'(0)]
+missings <- imputed_data[imputation_columns] %>% is.na
 
-perpetratorrace_unknown_catdes <- data %>% 
-  mutate(
-    PerpetratorRace = ifelse(PerpetratorRace != 'Unknown', 'Known', 'Unknown') %>% factor,
-    Year = factor(Year)
-  ) %>% 
-  select(-Date) %>% 
-  as.data.frame() %>% 
-  catdes(num.var=12, proba=0.05)
+# Random initialization
+for (col in imputation_columns){
+  if (class(imputed_data[[col]]) == 'factor'){
+    imputed_data[missings[, col], col] <- imputed_data[[col]] %>% 
+      levels %>% sample(missings[, col] %>% sum, replace=TRUE)  
+  } else if (class(imputed_data[[col]]) == 'integer') {
+    col_data <- imputed_data[[col]]
+    
+    imputed_data[missings[, col], col] <- sample(
+      min(col_data, na.rm=TRUE):max(col_data, na.rm=TRUE), 
+      missings[, col] %>% sum, replace=TRUE
+    )
+  } else {
+    paste(class(col), 'class not implemented yet') %>% stop
+  }
+}
 
-perpetratorrace_unknown_catdes$test.chi2
-# There's relationship between PerpetratorRace=Unknown and the rest of the variables
+max_iterations <- 10
+max_depth <- 5
+ntree <- 50
 
-weapon_unknown_catdes <- data %>% 
-  mutate(
-    Weapon = ifelse(Weapon != 'Unknown', 'Known', 'Unknown') %>% factor,
-    Year = factor(Year)
-  ) %>% 
-  select(-Date) %>% 
-  as.data.frame() %>% 
-  catdes(num.var=14, proba=0.05)
+for (iteration in 1:max_iterations) {
+  prev_matrix <- imputed_data
+  
+  for (col in imputation_columns) {
+    print(paste(iteration, col))
+    
+    train <- !missings[, col]
+    test <- missings[, col]
+    
+    col_num <- (colnames(prev_matrix) == col) %>% which
+    
+    model <- randomForest(
+      prev_matrix[train, -col_num],
+      prev_matrix[[col_num]][train],
+      maxnodes=2^(max_depth - 1),
+      ntree=ntree
+    )
+    
+    imputed_data[[col_num]][test] <- predict(
+      model, prev_matrix[test, -col_num]
+    )
+  }
+  
+  rm(prev_matrix)
+}
 
-weapon_unknown_catdes$test.chi2
-# There's relationship between Weapon=Unknown and the rest of the variables
+imputed_data$City <- data$City
+imputed_data$Date <- data$Date
 
-# So, we'll leave Unknown as a separate modality
+data <- imputed_data
+rm(imputed_data)
 
-
-# Now, for the NAs in age. How many are they?
-(select(data, VictimAge, PerpetratorAge) %>% is.na %>% colSums) / nrow(data)
-# Very low percentage. We could impute their values
-# TODO: Imputations
-
-# We only have two numerical variables, both ages, 
-# that we've already analysed for outliers. 
-
+data$VictimAge <- data$VictimAge %>% round %>% as.integer
+data$PerpetratorAge <- data$PerpetratorAge %>% round %>% as.integer
 
 ### Feature Extraction ###
 # Could we define any new variables based on the ones we already have?
+
+data$AgeDiff <- data$PerpetratorAge - data$VictimAge
+
+data$Weapon %>% table %>% sort
+
+data$Weapon_Fire <- data$Weapon %in% c('Firearm', 'Gun', 'Handgun', 'Rifle', 'Shotgun')
+data$Weapon_Violence <- data$Weapon %in% c('Fall', 'Drowning', 'Suffocation', 'Strangulation')
+
+data$Relationship %>% table %>% sort
+
+data$Relationship_Family <- data$Relationship %in% c(
+  'Husband', 'Wife', 
+  'Ex-Husband', 'Ex-Wife', 
+  
+  'Common-Law Husband', 'Common-Law Wife',
+  
+  'Father', 'Mother', 
+  'Stepfather', 'Stepmother',
+  
+  'Son', 'Daughter',
+  'Stepson', 'Stepdaughter',
+  
+  'Brother', 'Sister', 
+  'Family', 'In-Law'
+)
+
+data$Relationship_Romantic <- data$Relationship %in% c(
+  'Boyfriend', 'Girlfriend', 
+  'Boyfriend/Girlfriend', 
+  'Husband', 'Wife', 
+  'Common-Law Husband', 'Common-Law Wife', 
+  'Ex-Husband', 'Ex-Wife'
+)
+
+data$Sex_Same <- data$VictimSex == data$PerpetratorSex
+data$Sex_PerpetratorMaleVictimFemale <- data$PerpetratorSex == 'Male' & data$VictimSex == 'Female'
+
+data$Month %>% unique
+
+data$Month_Winter <- data$Month %in% c('December', 'January', 'February')
+data$Month_Spring <- data$Month %in% c('March', 'April', 'May')
+data$Month_Summer <- data$Month %in% c('June', 'July', 'August')
+data$Month_Autumn <- data$Month %in% c('September', 'October', 'November')
+
+# Save final preprocessed file
+write.csv(data, gzfile('data/database_preprocessed.csv.gz', 'wt'))
