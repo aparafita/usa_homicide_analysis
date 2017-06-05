@@ -127,6 +127,43 @@ X[, 1:2] %>% as_tibble() %>% bind_cols(train['CrimeType']) %>%
 ggsave('plots/MCA_scatter.png')
 
 
+
+# Latent factors ----------------------------------------------------------
+tibble(
+  x=mca$ind$coord[, 1],
+  y=mca$ind$coord[, 2]
+) %>% 
+  sample_n(10000) %>% 
+  ggplot(aes(x, y)) + 
+  geom_point(color='black', alpha=.5) + 
+  geom_point(
+    aes(x, y), color='red', 
+    data=tibble(
+      x=mca$quali.sup$coord[, 1],
+      y=mca$quali.sup$coord[, 2]
+    )
+  ) + 
+  geom_text(
+    aes(x, y, label=CrimeType), color='red', 
+    data=tibble(
+      x=mca$quali.sup$coord[, 1],
+      y=mca$quali.sup$coord[, 2],
+      CrimeType=rownames(mca$quali.sup$coord)
+    )
+  )
+
+# As we've seen in the previous plot, CrimeType can appear everywhere in the factorial plane.
+# If we plot the centroids of its individuals, we don't notice a significant difference either.
+
+# If we look at the variables plot from the MCA model:
+plot(mca, choix='var')
+ggsave('plots/MCA_vars_plot.png')
+
+# We can't see any other characteristics. 
+# There aren't any relevant latent factors 
+# (at least retrievable from this dataset) worth analyzing.
+
+
 # Clustering --------------------------------------------------------------
 
 # Since we have a huge dataset, if we want to use Hierarchical Clustering,
