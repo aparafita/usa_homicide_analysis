@@ -10,11 +10,11 @@ library(forcats)
 
 data <- read_csv('data/database.csv.gz')
 data
-
+dim(data)
 # Change the column names so they don't include spaces
 colnames(data) <- colnames(data) %>% map(str_replace, ' ', '')
 
-
+names(data)
 # 1. What is the objective of the data? -----------------------------------
 
 # We'll try to predict several variables about the perpetrator or the type of incident.
@@ -116,10 +116,13 @@ data$Year %>% unique() # From 1980 to 2014
 data %>% 
   count(Year) %>% 
   ggplot() + 
-  geom_line(aes(Year, n))
+  geom_line(aes(Year, n)) + 
+  ylab("Number of murders")
 # We notice a huge increase around 1990, and after 1993, the highest increase ever, 
 # there's a considerable drop in the number of murders to a more stable rate.
 # http://legal-dictionary.thefreedictionary.com/Violent+Crime+Control+and+Law+Enforcement+Act+of+1994
+
+ggsave('plots/year_evolution.png')
 
 months <- c(
   'January', 'February', 'March',
@@ -152,6 +155,8 @@ data %>%
   ) + 
   theme(plot.title = element_text(hjust = 0.5))
 
+ggsave('plots/month_evolution.png')
+
 # Types of crime over time
 data %>% 
   mutate(CrimeType=fct_relevel(CrimeType, 'Murder or Manslaughter', 'Manslaughter by Negligence')) %>% 
@@ -162,6 +167,8 @@ data %>%
     plot.title = element_text(hjust = 0.5),
     legend.position="bottom"
   )
+
+ggsave('plots/crime_type_time.png')
 
 
 ### Perpetrator Variables Analysis ###
@@ -322,6 +329,40 @@ data %>%
 # This variable represents an identificator for when there is more than one victim in the same case. 
 # We believe that it does not bring important information for our analysis, so we will discard it. 
 data <- data %>% select(-VictimCount)
+
+
+# EDA Visualization -------------------------------------------------------
+data2 <- data %>%
+  select(VictimSex, PerpetratorSex) %>% 
+  filter(VictimSex != 'Unknown' & PerpetratorSex != 'Unknown')
+ggplot(data = data2, mapping = aes(x = VictimSex)) +
+  geom_bar(mapping = aes(fill = PerpetratorSex)) +
+  ylab('Number of murders') +
+  xlab('Victim Sex')
+
+ggsave('plots/sex_victim_perpetrator.png')
+
+data %>% 
+  mutate(AgeDiff = PerpetratorAge - VictimAge) %>% 
+  filter(AgeDiff < 50 & AgeDiff > -50) %>% 
+  na.omit() %>% 
+  ggplot(mapping = aes(x = AgeDiff)) +
+  geom_bar(mapping = aes(fill = Weapon)) +
+  xlab('Age Difference = Perpetrator Age - Victim Age') +
+  ylab('Number of murders')
+
+data %>% 
+  mutate(AgeDiff = PerpetratorAge - VictimAge) %>% 
+  filter(AgeDiff < 50 & AgeDiff > -50) %>% 
+  na.omit() %>% 
+  ggplot(mapping = aes(x = AgeDiff)) +
+  geom_bar(mapping = aes(fill = Weapon)) +
+  xlab('Age Difference = Perpetrator Age - Victim Age') +
+  ylab('Number of murders')
+
+# Which variables should we impute? ------------------------------------------------------------------
+
+
 
 # Let's now take a look at the final dataset
 # The numerical variables are just these three: Year, VictimAge and PerpetratorAge
