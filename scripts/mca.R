@@ -95,12 +95,14 @@ mca <- MCA(
 
 # Let's analyze the results of MCA
 
+png('plots/mca_screeplot.png')
 plot(mca$eig$eigenvalue, type='o', cex=.5, pch=16)
 abline(h=mca$eig$eigenvalue %>% mean, lty='dashed', col='red')
-ggsave('plots/mca_screeplot.png')
+dev.off()
 
+png('plots/mca_cumulative_screeplot.png')
 plot(mca$eig$`cumulative percentage of variance`, type='o', cex=.5, pch=16)
-ggsave('plots/mca_cumulative_screeplot.png')
+dev.off()
 
 sum((mca$eig$eigenvalue - mean(mca$eig$eigenvalue)) > 0) # 15
 
@@ -126,8 +128,6 @@ X[, 1:2] %>% as_tibble() %>% bind_cols(train['CrimeType']) %>%
 
 ggsave('plots/MCA_scatter.png')
 
-
-
 # Latent factors ----------------------------------------------------------
 tibble(
   x=mca$ind$coord[, 1],
@@ -152,12 +152,15 @@ tibble(
     )
   )
 
+ggsave('plots/MCA_CrimeType_centroids.png')
+
 # As we've seen in the previous plot, CrimeType can appear everywhere in the factorial plane.
 # If we plot the centroids of its individuals, we don't notice a significant difference either.
 
 # If we look at the variables plot from the MCA model:
+png('plots/MCA_vars_plot.png')
 plot(mca, choix='var')
-ggsave('plots/MCA_vars_plot.png')
+dev.off()
 
 # We can't see any other characteristics. 
 # There aren't any relevant latent factors 
@@ -204,11 +207,13 @@ centers %>% dim
 
 hc <- hclust(dist(centers), method='ward.D2', members=members)
 
+png('plots/dendogram.png')
 plot(hc)
-ggsave('plots/dendogram.png')
+dev.off()
 
+png('plots/cluster_heights_barplot.png')
 barplot(hc$height, main='Dendogram Heights')
-ggsave('plots/cluster_heights_barplot.png')
+dev.off()
 
 # By looking at the barplot, 
 # the fifth bar still has enough significance in the difference in height.

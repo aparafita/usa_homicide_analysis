@@ -84,9 +84,21 @@ model <- randomForest(
 
 model$importance[,'Manslaughter by Negligence'] %>% 
   sort(decreasing=TRUE) %>% 
-  barplot(las=2, cex.names=.5)
+  tibble(
+    feature=factor(
+      names(.), 
+      levels=names(.)[
+        order(., decreasing=TRUE)
+        ]
+    ), 
+    importance=.
+  ) %>% 
+  ggplot(aes(feature, importance)) +
+  geom_bar(stat='identity') + 
+  theme(axis.text.x = element_text(angle = 90, hjust = 1)) + 
+  ggtitle('Feature importance (before hyperparameter optimization)')
 
-ggsave('plots/variable_importance.png')
+ggsave('plots/variable_importance_preopt.png')
 
 # Starting from AgencyType, all the remaining variables seem to be irrelevant, even cluster
 # We'll omit all of those except cluster, Agency Type and those related to Sex, 
@@ -198,8 +210,14 @@ roc <- performance(pred_obj, measure="tpr", x.measure="fpr")
 
 (auc <- as.numeric(performance(pred_obj, 'auc')@y.values)) # 0.871645
 
-plot(roc, main='ROC curve')
-abline(0, 1, col='blue', lty='dashed')
+tibble(
+  FPR=roc@x.values[[1]],
+  TPR=roc@y.values[[1]]
+) %>% 
+  ggplot(aes(FPR, TPR)) + 
+  geom_line() + 
+  geom_abline(slope=1, lty='dashed') + 
+  ggtitle('ROC curve')
 
 ggsave('plots/roc.png')
 
@@ -231,3 +249,20 @@ feature_importance
 # 0.1266666734    0.1241922381    0.0847558701    0.0466412424    0.0313578027    0.0302220061 
 # VictimRace      AgencyType  PerpetratorSex       VictimSex        Sex_Same         cluster 
 # 0.0137042184    0.0077710294    0.0058374889    0.0030771813    0.0030129977    0.0009858836
+
+
+tibble(
+  feature=factor(
+    names(feature_importance), 
+    levels=names(feature_importance)[
+      order(feature_importance, decreasing=TRUE)
+    ]
+  ), 
+  importance=feature_importance
+) %>% 
+  ggplot(aes(feature, importance)) +
+  geom_bar(stat='identity') + 
+  theme(axis.text.x = element_text(angle = 90, hjust = 1)) + 
+  ggtitle('Feature importance')
+
+ggsave('plots/variable_importance.png')
