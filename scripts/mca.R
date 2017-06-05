@@ -1,52 +1,66 @@
 library(tidyverse)
 library(FactoMineR)
 
+# Preprocessing -----------------------------------------------------------
+
 data <- read_csv('data/database_preprocessed.csv.gz')
 data <- data %>% select(-X1) # index
 
-# Change to factors the categorical variables
+# Drop some columns from the analysis. 
+# Some because they would increase the inertia unnecessarily,
+# some because they are direcly associated with certain modalities 
+# (Relationship_Family), which should not be considered in the MCA.
+# Those are features for the final prediction model, not for the MCA.
 data <- data %>% 
-  mutate(
-    AgencyType = as.factor(data$AgencyType),
-    State = as.factor(data$State),
-    Month = as.factor(data$Month),
-    CrimeType = as.factor(data$CrimeType),
-    VictimSex = as.factor(data$VictimSex),
-    VictimRace = as.factor(data$VictimRace),
-    PerpetratorSex = as.factor(data$PerpetratorSex),
-    PerpetratorRace = as.factor(data$PerpetratorRace),
-    Relationship = as.factor(data$Relationship),
-    Weapon = as.factor(data$Weapon),
-    City = as.factor(data$City),
-    State = as.factor(data$State),
-    Weapon_Fire = as.factor(data$Weapon_Fire),
-    Weapon_Violence = as.factor(data$Weapon_Violence),
-    Relationship_Family = as.factor(data$Relationship_Family),
-    Relationship_Romantic = as.factor(data$Relationship_Romantic),
-    Sex_Same = as.factor(data$Sex_Same),
-    Month_Winter = as.factor(data$Month_Winter),
-    Month_Spring = as.factor(data$Month_Spring),
-    Month_Summer = as.factor(data$Month_Summer),
-    Month_Autumn = as.factor(data$Month_Autumn)
+  select(
+    -State, -Year, -Month, -City, -Date,
+    -Weapon_Fire, -Weapon_Violence, 
+    -Relationship_Family, -Relationship_Romantic
   )
 
-# Cesc: Parece que la ultima row contiene muchos NA, supongo que al generar las new features
-# no se han generado para ese individuo. Para ahorrarme volver a ejecutar todo el preprocessing, 
-# simplemente la quito. También quito la primera columna, que sólo es un ID
-data <- data %>% filter(!is.na(Month_Winter)) 
+data %>% colnames
+
+# Change the categorical variables to factors
+data <- data %>% 
+  mutate(
+    VictimAge = as.numeric(VictimAge),
+    PerpetratorAge = as.numeric(PerpetratorAge),
+    AgeDiff = as.numeric(AgeDiff),
+    
+    AgencyType = as.factor(AgencyType),
+    CrimeType = as.factor(CrimeType),
+    VictimSex = as.factor(VictimSex),
+    VictimRace = as.factor(VictimRace),
+    PerpetratorSex = as.factor(PerpetratorSex),
+    PerpetratorRace = as.factor(PerpetratorRace),
+    Relationship = as.factor(Relationship),
+    Weapon = as.factor(Weapon),
+    Sex_Same = as.factor(Sex_Same),
+    Month_Winter = as.factor(Month_Winter),
+    Month_Spring = as.factor(Month_Spring),
+    Month_Summer = as.factor(Month_Summer),
+    Month_Autumn = as.factor(Month_Autumn)
+  )
 
 data
 summary(data)
+
+
+# Train/Test split --------------------------------------------------------
 
 # Divide in train/test first
 nrow(data) # 448172
 
 set.seed(123)
-train <- sample.int(nrow(data), 300000)
-test <- (1:nrow(data))[-train]
 
-train <- data[train, ]
-test <- data[test, ]
+train_idx <- sample.int(nrow(data), 300000)
+test_idx <- (1:nrow(data))[-train_idx]
+
+train <- data[train_idx, ]
+test <- data[test_idx, ]
+
+
+# MCA ---------------------------------------------------------------------
 
 # MCA defined with train, test transformed through that MCA.
 # Clustering defined with train, test assigned to those clusters 
@@ -56,81 +70,251 @@ test <- data[test, ]
 # categorical variables available
 data %>% names()
 
-var_MCA <- c(1,2,5,6,8,9,11,12,13,16,17,18,19,20,21,22,23,24,25)
+# Exclude numerical variables and those categories that we don't want to use for the MCA
+# CrimeType needs to be excluded too because it's the target variable
 
-(mca <- MCA(
-  train[,var_MCA], 
-  ncp = 120, 
-  quanti.sup = 10, # AgeDiff 
-  quali.sup = 3, # CrimeType
-  graph=FALSE)
+# How many PCs are there?
+train %>% 
+  select(-AgeDiff, -PerpetratorAge, -VictimAge, -CrimeType) %>% 
+  map(~length(unique(.))) %>% unlist() %>% sum # 75 different modalities
+
+data %>% colnames
+quanti.sup <- c(4, 7, 11)
+quali.sup <- c(2)
+ind.sup <- test_idx
+
+mca <- MCA(
+  data %>% as.data.frame, 
+  ncp = 75, 
+  quanti.sup = quanti.sup,
+  quali.sup = quali.sup,
+  ind.sup = ind.sup,
+  level.ventil=.2,
+  graph=FALSE
 )
 
-plot(mca$eig$`cumulative percentage of variance`)
-plot(mca$eig$eigenvalue)
+# Let's analyze the results of MCA
 
-# We have omited some of the categorical variables that had many levels (like City).
-# The dimensions created by the MCA have a very low associated eigenvalues (as expected), so we 
-# need to take a large number of dimensions to have enough variance explained.
-# Taking a look at the screeplot, we see that the dimensions between 20 to 90 have a very similar
-# eigenvalue, so they don't add much information. So one option could be taking the first 20 dimensions.
-# On the other hand, we can also compute how many dimensions have an associated eigenvalue
-# greater than the mean. In this case there are 56 dimensions with a greater eigenvalue than the mean.
+plot(mca$eig$eigenvalue, type='o', cex=.5, pch=16)
+abline(h=mca$eig$eigenvalue %>% mean, lty='dashed', col='red')
+ggsave('plots/mca_screeplot.png')
 
-sum(mca$eig$eigenvalue - mean(mca$eig$eigenvalue) > 0)
+plot(mca$eig$`cumulative percentage of variance`, type='o', cex=.5, pch=16)
+ggsave('plots/mca_cumulative_screeplot.png')
 
-ndim1 <- 20
-ndim2 <- 56
+sum((mca$eig$eigenvalue - mean(mca$eig$eigenvalue)) > 0) # 15
 
-mca_ind_20 <- mca$ind$coord[,1:ndim1]
-mca_ind_56 <- mca$ind$coord[,1:ndim2]
+mca$eig$`cumulative percentage of variance`[2] # 12.42322
+mca$eig$`cumulative percentage of variance`[5] # 25.33834
+mca$eig$`cumulative percentage of variance`[15] # 58.76992
 
-plot(x = mca_ind_20[,1], y = mca_ind_20[,2])
+# We have a dataset with some variables that have a high number of modalities,
+# some of those rare. That increases the overall variance of the dataset
+# without adding useful information. Accounting for a 25% of the variability
+# might then be desirable and thus, in this case, it would be preferable
+# to use the Last Elbow rule over the significant eigenvalues (the ones above the mean)
+# than using the Kaiser rule directly just to get to the 58% of explained variance.
 
-# Perform a hierarchical clustering with a subset of 10000 rows (the function does not
-# allow more than that). In order to perform a hierarchical clustering we need first to compute
-# the matrix of Euclidean distances (dist() function).
+ncomp <- 5
 
-sample <- sample.int(nrow(mca_ind_20), 10000)
-hc <- hclust(dist(mca_ind_20[sample,]), method = "ward.D2")
+X <- mca$ind$coord[, 1:ncomp]
 
-par(mfrow=c(1, 1))
-plot(hc, cex=.1, xlab='', ylab='', yaxt='n', sub='', main='Dendogram')
-barplot(hc$height, main='Accumulated height')
+X[, 1:2] %>% as_tibble() %>% bind_cols(train['CrimeType']) %>% 
+  'colnames<-'(c('x', 'y', 'CrimeType')) %>% 
+  ggplot(aes(x, y, color=CrimeType)) +
+  geom_point(alpha=.5)
 
-# If we take a look at the dendrogram,  9 clusters seems a reasonable choice.
-nc <- 9
+ggsave('plots/MCA_scatter.png')
 
-old_clust <- cutree(hc, nc)
 
-data_clust <- as.data.frame(mca_ind_20[sample, 1:2])
-data_clust$clust <- as.factor(old_clust)
+# Clustering --------------------------------------------------------------
 
-# The clusters are the following
-ggplot(data = data_clust,mapping = aes(x = data_clust$`Dim 1`, y = data_clust$`Dim 2`)) +
-  geom_point(mapping = aes(col = clust))
+# Since we have a huge dataset, if we want to use Hierarchical Clustering,
+# we need to perform some previous steps.
 
-# Now, we are going to do a consolidation operation using the k-Means algorithm. We will
-# compute the centroids of the HC and we will pass them as the initial centroids of the k-Means
-X <- as.data.frame(mca_ind_20[sample,])
-cluster_centroids <- list()
-for (i in 1:nc){
-  cluster_centroids[[i]] <- X[old_clust == i, ] %>% colMeans() %>% as.vector()
+# Run K-Means 3 times
+nclust <- 14
+
+set.seed(12345)
+km1 <- kmeans(X, nclust)
+km2 <- kmeans(X, nclust)
+
+# Cross-table
+table(km1$cluster, km2$cluster)
+
+inds <- list()
+members <- c()
+for (c1 in 1:nclust){
+  for (c2 in 1:nclust){
+    inds_cell <- (km1$cluster == c1) & (km2$cluster == c2)
+    
+    if (any(inds_cell)) {
+      centroid <- X[inds_cell, ]
+      if (dim(centroid) %>% is.null){
+        centroid <- matrix(centroid, ncol=ncomp, byrow=TRUE)
+      }
+      
+      centroid <- colMeans(centroid)
+      
+      inds <- combine(inds, list(centroid))
+      members <- c(members, sum(inds_cell))
+    }
+  }
 }
-(cluster_centroids <- t(matrix(unlist(cluster_centroids), ncol=nc)))
 
-# K-Means with the initial centroids of HC
-set.seed(123)
-model <- kmeans(X, cluster_centroids)
-new_clusters <- model$cluster
+centers <- combine(inds) %>% matrix(ncol=ncomp, byrow=TRUE)
+centers %>% dim
 
-# Once we have obtained the final clusters, we are going to use the catdes() function to 
-# see which are the 'properties' of each cluster.
-results <- train[sample,] %>% mutate(cluster = new_clusters)
+hc <- hclust(dist(centers), method='ward.D2', members=members)
 
-ct <- catdes(
-  donnee = as.data.frame(results),
-  num.var = 26
-)
-names(as.data.frame(results))
-as.data.frame(results)
+plot(hc)
+ggsave('plots/dendogram.png')
+
+barplot(hc$height, main='Dendogram Heights')
+ggsave('plots/cluster_heights_barplot.png')
+
+# By looking at the barplot, 
+# the fifth bar still has enough significance in the difference in height.
+# As a result, 6 (5+1) clusters would be considered.
+# Looking at the dendogram, those clusters seem not to be outlying clusters.
+# So, let's stick with 6 clusters.
+
+nc <- 6
+hc <- cutree(hc, nc)
+
+centroids <- list()
+for (i in 1:nc){
+  x <- centers[hc == i, ]
+  
+  if (dim(x) %>% is.null){
+    x <- matrix(x, ncol=ncomp, byrow=TRUE)
+  }
+  
+  centroids <- combine(centroids, list(colMeans(x)))
+}
+
+centroids <- combine(centroids) %>% matrix(ncol=ncomp, byrow=TRUE)
+
+
+# Final consolidation step
+km <- kmeans(X, centroids)
+
+table(km$cluster)
+# 1     2     3     4     5     6 
+# 58692 64538 58612 43595 49623 24940
+
+cbind(X[, 1:2], km$cluster) %>% 
+  as_tibble %>% 
+  'colnames<-'(c('x', 'y', 'cluster')) %>% 
+  mutate(cluster=factor(cluster)) %>% 
+  ggplot(aes(x, y, color=cluster)) +
+  geom_point(alpha=.5)
+
+ggsave('plots/clusters.png')
+
+
+# Cluster profiling -------------------------------------------------------
+
+# Once we have obtained the final clusters, 
+# we are going to use the catdes() function to see 
+# which are the properties of each cluster.
+
+train <- train %>% 
+  mutate(cluster=factor(km$cluster))
+
+train %>% colnames
+cluster_profiling <- train %>% 
+  as.data.frame %>% 
+  catdes(num.var=17)
+
+
+# Categorical variables:
+cluster_profiling$category
+
+# $`1`
+# Cla/Mod   Mod/Cla    Global    p.value    v.test
+# Weapon=Drugs                           22.64770 0.3526886 0.3046667 0.02053243  2.316473
+# Relationship=Ex-Wife                   22.11246 0.4958086 0.4386667 0.02116154  2.305090
+# PerpetratorRace=Asian/Pacific Islander 20.85427 1.4141621 1.3266667 0.04009540  2.052765
+# Relationship=Stepfather                16.59243 0.2538676 0.2993333 0.02240805 -2.283379
+# Relationship=Wife                      18.82861 4.9734206 5.1676667 0.01735918 -2.379010
+# 
+# $`2`
+# Cla/Mod  Mod/Cla Global    p.value    v.test
+# PerpetratorSex=Female 21.95122 11.04466 10.824 0.04202869  2.033236
+# PerpetratorSex=Male   21.45944 88.95534 89.176 0.04202869 -2.033236
+# 
+# $`3`
+# Cla/Mod    Mod/Cla     Global     p.value    v.test
+# Relationship=Son                       20.81762  2.3544667  2.2096667 0.008280064  2.640431
+# Weapon=Drowning                        23.44214  0.2695694  0.2246667 0.012162064  2.507407
+# Relationship=Husband                   20.59075  2.0575991  1.9523333 0.041048818  2.043037
+# CrimeType=Manslaughter by Negligence   20.56689  2.0303010  1.9286667 0.047169509  1.984775
+# CrimeType=Murder or Manslaughter       19.51709 97.9696990 98.0713333 0.047169509 -1.984775
+# PerpetratorRace=Asian/Pacific Islander 18.11558  1.2301235  1.3266667 0.021777917 -2.294219
+# 
+# $`4`
+# Cla/Mod   Mod/Cla    Global     p.value    v.test
+# Relationship=Stepdaughter 18.73805 0.2247964 0.1743333 0.008185626  2.644316
+# Relationship=Father       13.07301 0.8831288 0.9816667 0.022449097 -2.282682
+# 
+# $`5`
+# Cla/Mod   Mod/Cla    Global    p.value    v.test
+# Relationship=In-Law 14.82874 0.7153941 0.7980000 0.02205838 -2.289361
+# Weapon=Drugs        13.23851 0.2438385 0.3046667 0.00583820 -2.756733
+# 
+# $`6`
+# Cla/Mod    Mod/Cla     Global      p.value    v.test
+# VictimRace=Unknown                10.274542 0.99037690 0.80133333 0.0006944266  3.391770
+# VictimRace=Asian/Pacific Islander  9.298813 1.72814755 1.54500000 0.0157724377  2.414139
+# AgencyType=Regional Police        13.600000 0.06816359 0.04166667 0.0457269847  1.997905
+# Weapon=Drugs                      10.175055 0.37289495 0.30466667 0.0464471683  1.991307
+# Relationship=Stepmother            4.081633 0.02405774 0.04900000 0.0490703762 -1.967980
+# Relationship=Ex-Wife               6.534954 0.34482759 0.43866667 0.0160629975 -2.407481
+
+# Possible titles:
+# Cluster 2: woman perpetrator
+# Cluster 3: son murder by negligence
+# Cluster 4: stepdaughter murder
+# Cluster 6: unkwown race or asian victims
+
+# There isn't any significant description through the numerical variables
+
+# Finally, if we study which of the variables affect the classification for the clusters:
+cluster_profiling$test.chi2
+# only PerpetratorSex has a significant p-value (0.0496), 
+# which already appeared in cluster 2, 
+# depicting those cases where the perpetrator was a Woman.
+
+# In conclusion, there are some meaningful differences between clusters, but not that many.
+
+# Let's keep the cluster variable nevertheless, 
+# in case it has more importance for the prediction of CrimeType.
+
+
+# Cluster assignment for test ---------------------------------------------
+# We have computed the cluster for train, but not for test
+# In order to assign the corresponding cluster, we compute the distance to their centers
+
+Xtest <- mca$ind.sup$coord[, 1:ncomp]
+centers <- km$centers %>% as.matrix()
+
+test_assignment <- 1:nrow(Xtest) %>% 
+  map(
+    ~(matrix(rep(Xtest[., ], nc), nrow=nc, byrow=TRUE) - centers) ^ 2 %>% 
+      rowSums %>% which.min
+  ) %>% combine
+
+table(test_assignment)
+
+test <- test %>% mutate(cluster=factor(test_assignment))
+
+# Add the index again (to recover all the remaining data later)
+train$index <- train_idx
+test$index <- test_idx
+
+train <- bind_cols(train, as_tibble(X) %>% 'colnames<-'(paste('MCA', 1:ncomp, sep='')))
+test <- bind_cols(test, as_tibble(Xtest) %>% 'colnames<-'(paste('MCA', 1:ncomp, sep='')))
+
+write.csv(train, gzfile('data/train.csv.gz', 'wt'))
+write.csv(test, gzfile('data/test.csv.gz', 'wt'))
