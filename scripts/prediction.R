@@ -177,7 +177,7 @@ ggsave('plots/hyperparameter_optimization.png')
 
 # The model doesn't improve significantly starting from 200 trees.
 # max_depth=10 is the clear winner in all ntrees, so we'll stick with that.
-# We choose ntree=200 due to its apparant stability
+# We choose ntree=200 due to its apparent stability
 
 max_depth <- 10
 ntree <- 200
@@ -249,7 +249,6 @@ feature_importance
 # 0.1266666734    0.1241922381    0.0847558701    0.0466412424    0.0313578027    0.0302220061 
 # VictimRace      AgencyType  PerpetratorSex       VictimSex        Sex_Same         cluster 
 # 0.0137042184    0.0077710294    0.0058374889    0.0030771813    0.0030129977    0.0009858836
-
 
 tibble(
   feature=factor(

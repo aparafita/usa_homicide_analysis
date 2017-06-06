@@ -273,65 +273,10 @@ cluster_profiling <- train %>%
 # Categorical variables:
 cluster_profiling$category
 
-# $`1`
-# Cla/Mod   Mod/Cla    Global    p.value    v.test
-# Weapon=Drugs                           22.64770 0.3526886 0.3046667 0.02053243  2.316473
-# Relationship=Ex-Wife                   22.11246 0.4958086 0.4386667 0.02116154  2.305090
-# PerpetratorRace=Asian/Pacific Islander 20.85427 1.4141621 1.3266667 0.04009540  2.052765
-# Relationship=Stepfather                16.59243 0.2538676 0.2993333 0.02240805 -2.283379
-# Relationship=Wife                      18.82861 4.9734206 5.1676667 0.01735918 -2.379010
-# 
-# $`2`
-# Cla/Mod  Mod/Cla Global    p.value    v.test
-# PerpetratorSex=Female 21.95122 11.04466 10.824 0.04202869  2.033236
-# PerpetratorSex=Male   21.45944 88.95534 89.176 0.04202869 -2.033236
-# 
-# $`3`
-# Cla/Mod    Mod/Cla     Global     p.value    v.test
-# Relationship=Son                       20.81762  2.3544667  2.2096667 0.008280064  2.640431
-# Weapon=Drowning                        23.44214  0.2695694  0.2246667 0.012162064  2.507407
-# Relationship=Husband                   20.59075  2.0575991  1.9523333 0.041048818  2.043037
-# CrimeType=Manslaughter by Negligence   20.56689  2.0303010  1.9286667 0.047169509  1.984775
-# CrimeType=Murder or Manslaughter       19.51709 97.9696990 98.0713333 0.047169509 -1.984775
-# PerpetratorRace=Asian/Pacific Islander 18.11558  1.2301235  1.3266667 0.021777917 -2.294219
-# 
-# $`4`
-# Cla/Mod   Mod/Cla    Global     p.value    v.test
-# Relationship=Stepdaughter 18.73805 0.2247964 0.1743333 0.008185626  2.644316
-# Relationship=Father       13.07301 0.8831288 0.9816667 0.022449097 -2.282682
-# 
-# $`5`
-# Cla/Mod   Mod/Cla    Global    p.value    v.test
-# Relationship=In-Law 14.82874 0.7153941 0.7980000 0.02205838 -2.289361
-# Weapon=Drugs        13.23851 0.2438385 0.3046667 0.00583820 -2.756733
-# 
-# $`6`
-# Cla/Mod    Mod/Cla     Global      p.value    v.test
-# VictimRace=Unknown                10.274542 0.99037690 0.80133333 0.0006944266  3.391770
-# VictimRace=Asian/Pacific Islander  9.298813 1.72814755 1.54500000 0.0157724377  2.414139
-# AgencyType=Regional Police        13.600000 0.06816359 0.04166667 0.0457269847  1.997905
-# Weapon=Drugs                      10.175055 0.37289495 0.30466667 0.0464471683  1.991307
-# Relationship=Stepmother            4.081633 0.02405774 0.04900000 0.0490703762 -1.967980
-# Relationship=Ex-Wife               6.534954 0.34482759 0.43866667 0.0160629975 -2.407481
-
-# Possible titles:
-# Cluster 2: woman perpetrator
-# Cluster 3: son murder by negligence
-# Cluster 4: stepdaughter murder
-# Cluster 6: unkwown race or asian victims
-
-# There isn't any significant description through the numerical variables
-
-# Finally, if we study which of the variables affect the classification for the clusters:
-cluster_profiling$test.chi2
-# only PerpetratorSex has a significant p-value (0.0496), 
-# which already appeared in cluster 2, 
-# depicting those cases where the perpetrator was a Woman.
-
-# In conclusion, there are some meaningful differences between clusters, but not that many.
-
-# Let's keep the cluster variable nevertheless, 
-# in case it has more importance for the prediction of CrimeType.
+# There isn't any significant description through the numerical variables 
+# (because the corresponding object for the test on numerical variables
+# in the cluster_profiling object isn't even filled, 
+# which means there aren't any significant differences).
 
 
 # Cluster assignment for test ---------------------------------------------
